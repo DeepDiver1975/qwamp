@@ -98,14 +98,12 @@ namespace QWamp {
       m_stopped(false),
       m_in(in),
       m_out(out),
-      m_websocket(*(QWebSocket *)0),
       m_isJoined(false),
       m_msgRead(0),
       m_sessionId(0),
       m_requestId(0),
       m_goodbyeSent(false),
       m_messageFormat(messageFormat),
-      m_transportType(TransportType::RawSocket),
       state(Initial) {
     connect(&m_in, &QIODevice::readyRead, this, &QWamp::Session::readData);
     connect(&m_in, &QIODevice::readChannelFinished, [this]() {
@@ -130,34 +128,6 @@ namespace QWamp {
 
   Session::Session(const QString &name, QIODevice &inout, Session::MessageFormat transport, bool debug) : Session(name, inout, inout, transport, debug)
   {
-  }
-
-  Session::Session(QWebSocket &websocket, Session::MessageFormat messageFormat, bool debug)
-    : QObject(0),
-      m_debug(debug),
-      m_stopped(false),
-      m_in(*(QIODevice *)0),
-      m_out(*(QIODevice *)0),
-      m_websocket(websocket),
-      m_isJoined(false),
-      m_msgRead(0),
-      m_sessionId(0),
-      m_requestId(0),
-      m_goodbyeSent(false),
-      m_messageFormat(messageFormat),
-      m_transportType(TransportType::WebSocket),
-      state(Initial) {
-    connect(&m_websocket, &QWebSocket::readChannelFinished, [this]() {
-      m_stopped = true;
-      state = Initial;
-    });
-    connect(&m_websocket, &QWebSocket::textMessageReceived, this, &QWamp::Session::readMessage);
-    init();
-  }
-
-  Session::Session(const QString &name, QWebSocket &websocket, Session::MessageFormat messageFormat, bool debug) : Session(websocket, messageFormat, debug)
-  {
-    m_name = name;
   }
 
   const QString &Session::name() const
@@ -214,20 +184,14 @@ namespace QWamp {
   }
 
   void Session::start() {
-    if (m_transportType == TransportType::RawSocket) {
-      // Send the initial handshake packet informing the server which
-      // serialization format we wish to use, and our maximum message size
-      //
-      m_bufferMsgLen[0] = 0x7F; // magic byte
-      m_bufferMsgLen[1] = 0xF2; // we are ready to receive messages up to 2**24 octets and encoded using MsgPack
-      m_bufferMsgLen[2] = 0x00; // reserved
-      m_bufferMsgLen[3] = 0x00; // reserved
-      m_out.write(m_bufferMsgLen, sizeof(m_bufferMsgLen));
-    }
-    else {
-      state = State::Started;
-      Q_EMIT started();
-    }
+    // Send the initial handshake packet informing the server which
+    // serialization format we wish to use, and our maximum message size
+    //
+    m_bufferMsgLen[0] = 0x7F; // magic byte
+    m_bufferMsgLen[1] = 0xF2; // we are ready to receive messages up to 2**24 octets and encoded using MsgPack
+    m_bufferMsgLen[2] = 0x00; // reserved
+    m_bufferMsgLen[3] = 0x00; // reserved
+    m_out.write(m_bufferMsgLen, sizeof(m_bufferMsgLen));
   }
 
   void Session::readData() {
@@ -492,33 +456,18 @@ namespace QWamp {
     }
     CallRequest &callRequest = callRequestsIterator.value();
 
-    if (m_transportType == TransportType::WebSocket) {
-      QEventLoop responseLoop;
-      QObject::connect(&m_websocket, &QWebSocket::textMessageReceived, [&responseLoop]() {
-        responseLoop.exit();
-      });
-      send(message);
-      while (true) {
-        responseLoop.exec();
-        QCoreApplication::processEvents();
-        if (callRequest.ready) {           //add exception handling
-          break;
-        }
-      }
-    }
-    else { //m_transportType == TransportType::RawSocket
-      send(message);
-      while (true){
+    send(message);
+    while (true){
         if (!m_in.waitForReadyRead(30000)) {  //TODO handle timout as exception
           break;
         }
         readData();
-  //      QCoreApplication::processEvents(); //to call readData by signal
+        //      QCoreApplication::processEvents(); //to call readData by signal
         if (callRequest.ready) {           //add exception handling
           break;
         }
-      }
     }
+
     QVariant result;
     if (callRequest.ready) {
       if (!callRequest.ex.isEmpty()) {
@@ -1292,22 +1241,17 @@ namespace QWamp {
         msg = QJsonDocument::fromVariant(message).toJson(QJsonDocument::Compact);
       }
 
-      if (m_transportType == TransportType::RawSocket) {
-        int writtenLength = 0;
-        int writtenData = 0;
+    int writtenLength = 0;
+    int writtenData = 0;
 
-        // write message length prefix
-        int len = htonl(msg.length());
-        writtenLength += m_out.write((char*) &len, sizeof(len));
-        // write actual serialized message
-        char *b = msg.data();
-        while(writtenData < msg.length()) {
-          writtenData += m_out.write(&b[writtenData], msg.length() - writtenData);
-        }
-      }
-      else {
-        m_websocket.sendTextMessage(msg);
-      }
+    // write message length prefix
+    int len = htonl(msg.length());
+    writtenLength += m_out.write((char*) &len, sizeof(len));
+    // write actual serialized message
+    char *b = msg.data();
+    while(writtenData < msg.length()) {
+      writtenData += m_out.write(&b[writtenData], msg.length() - writtenData);
     }
+  }
   }
 }

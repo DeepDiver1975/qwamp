@@ -22,7 +22,6 @@
 #include <QMetaMethod>
 #include <QTime>
 #include <QVariant>
-#include <QWebSocket>
 
 #include <functional>
 
@@ -138,8 +137,6 @@ namespace QWamp {
 
       enum class MessageFormat { Msgpack, Json };
       Q_ENUM(MessageFormat)
-      enum class TransportType { WebSocket, RawSocket };
-      Q_ENUM(TransportType)
 
       /**
        * Create a new WAMP session.
@@ -181,9 +178,6 @@ namespace QWamp {
        * @param debug - whether log every procedure call and every published message
        */
       Session(const QString &name, QIODevice &inout, MessageFormat transport = MessageFormat::Msgpack, bool debug = false);
-
-      Session(const QString &name, QWebSocket &websocket, MessageFormat messageFormat = MessageFormat::Json, bool debug = false);
-      Session(QWebSocket &websocket, MessageFormat messageFormat = MessageFormat::Json, bool debug = false);
 
       /**
        * Gets session name
@@ -369,8 +363,6 @@ namespace QWamp {
       /// Output stream this session runs on.
       QIODevice &m_out;
 
-      QWebSocket &m_websocket;
-
       bool m_isJoined;
       char m_bufferMsgLen[4];
       quint32 m_msgLen;
@@ -392,7 +384,6 @@ namespace QWamp {
 
       EndpointWrapper endpointWrapper;
       MessageFormat m_messageFormat;
-      TransportType m_transportType;
 
       enum State {
         Initial,
@@ -449,6 +440,5 @@ namespace QWamp {
 }
 
 Q_DECLARE_METATYPE(QWamp::Session::MessageFormat)
-Q_DECLARE_METATYPE(QWamp::Session::TransportType)
 
 #endif // QWAMP_H

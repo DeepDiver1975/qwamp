@@ -5,7 +5,7 @@
 #-------------------------------------------------
 
 
-QT += concurrent testlib websockets
+QT += concurrent testlib
 QT -= gui
 
 TARGET = qwamp
